@@ -1,0 +1,374 @@
+<!DOCTYPE html>
+<html lang="de-CH">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="color-scheme" content="light">
+  <meta name="theme-color" content="#ffffff">
+  <title>Bibel · Lesen</title>
+  <style>
+    :root { font-synthesis: none; color-scheme: light; }
+    * { box-sizing: border-box; }
+    html { background:#fff; scroll-behavior:auto; -webkit-text-size-adjust:100%; }
+    body { margin:0; background:#fff; color:#151515; }
+    body.dialog-open { overflow:hidden; }
+    .reading {
+      width:100%; max-width:760px; margin:0 auto;
+      padding:13px 15px calc(78px + env(safe-area-inset-bottom));
+      font-family: Georgia, 'Times New Roman', Times, serif;
+      font-size: clamp(19px, 4.55vw, 22px);
+      line-height:1.62;
+      font-weight:400;
+      letter-spacing:-.014em;
+      overflow-wrap:break-word;
+      -webkit-font-smoothing:antialiased;
+      text-rendering:optimizeLegibility;
+    }
+    .verse { display:inline; }
+    /* A navigation target begins on a fresh line so no preceding verse hides its start. */
+    .verse.arrival::before { content:""; display:block; height:0; }
+    .bottom-bar {
+      position:fixed; inset:auto 0 0; z-index:5;
+      min-height:calc(44px + env(safe-area-inset-bottom));
+      background:#393939; color:#dedede;
+      border-top:1px solid #4a4a4a;
+    }
+    .position-button {
+      display:flex; align-items:center; justify-content:space-between;
+      gap:14px; height:44px; width:100%; max-width:760px;
+      margin:0 auto; padding:0 16px;
+      border:0; border-radius:0; background:transparent; color:inherit;
+      text-align:left; font:500 12.5px/1.25 -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+      letter-spacing:.025em; cursor:pointer;
+    }
+    .position-button:focus-visible, .close:focus-visible, .back:focus-visible,
+    .pick:focus-visible, .number:focus-visible { outline:2px solid #666; outline-offset:-3px; }
+    .bottom-bar::after { content:""; display:block; height:env(safe-area-inset-bottom); }
+    .caret { width:14px; height:14px; opacity:.55; flex:none; }
+    .scrim {
+      position:fixed; inset:0; z-index:20;
+      display:flex; align-items:flex-end; justify-content:center;
+      background:rgba(0,0,0,.35);
+      font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;
+    }
+    .scrim[hidden] { display:none; }
+    .sheet {
+      background:#fff; width:100%; max-width:560px;
+      height:min(82dvh,760px); min-height:min(440px,82dvh);
+      border-radius:16px 16px 0 0;
+      display:flex; flex-direction:column; overflow:hidden;
+      box-shadow:0 -10px 35px rgba(0,0,0,.08);
+    }
+    .sheet-header {
+      flex:none; display:grid; grid-template-columns:45px 1fr 45px;
+      align-items:center; height:55px; padding:6px 11px;
+      border-bottom:1px solid #ebebeb;
+    }
+    .step-title {
+      font-size:15px; font-weight:600; color:#242424;
+      text-align:center; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;
+    }
+    .back,.close {
+      border:0; background:transparent; color:#535353;
+      display:grid; place-items:center; width:40px; height:40px;
+      border-radius:8px; cursor:pointer;
+    }
+    .back[hidden] { visibility:hidden; display:grid; }
+    .header-icon { width:21px; height:21px; stroke:currentColor; fill:none; stroke-width:1.7; stroke-linecap:round; stroke-linejoin:round; }
+    .context { font-size:12px; color:#797979; padding:11px 22px 9px; flex:none; }
+    .context[hidden] { display:none; }
+    .search-wrap { padding:8px 18px 12px; border-bottom:1px solid #efefef; flex:none; }
+    .search-wrap[hidden] { display:none; }
+    .search {
+      background:#f4f4f4; border:1px solid transparent; border-radius:9px;
+      display:block; width:100%; height:43px; padding:0 13px; outline:none;
+      color:#222; font:14px/1.3 inherit;
+    }
+    .search:focus { border-color:#acacac; background:#fff; }
+    .choices { flex:1; min-height:0; overflow-y:auto; overscroll-behavior:contain; padding-bottom:calc(20px + env(safe-area-inset-bottom)); }
+    .group-label { padding:20px 22px 7px; text-transform:uppercase; font-size:10px; font-weight:700; color:#999; letter-spacing:.13em; }
+    .pick {
+      display:flex; align-items:center; justify-content:space-between;
+      border:0; border-bottom:1px solid #f0f0f0; background:#fff; width:100%;
+      text-align:left; min-height:47px; padding:9px 22px;
+      color:#262626; font:15px/1.4 -apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;
+      cursor:pointer;
+    }
+    .pick:active,.number:active { background:#f3f3f3; }
+    .pick .arrow { color:#aaa; font-size:20px; font-weight:300; }
+    .numbers { display:grid; grid-template-columns:repeat(5,minmax(0,1fr)); gap:10px; padding:11px 18px 10px; }
+    .number {
+      height:50px; border:1px solid #e8e8e8; border-radius:9px;
+      background:#fff; color:#252525;
+      font:500 15px/1 -apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;
+      cursor:pointer;
+    }
+    .no-results { padding:24px 22px; color:#888; font-size:14px; }
+    @media (min-width:700px) {
+      .reading { padding:22px 24px 90px; font-size:21px; }
+      .scrim { align-items:center; padding:26px; }
+      .sheet { border-radius:14px; height:min(76vh,670px); }
+    }
+    @media (max-width:360px) { .numbers { gap:7px; padding-inline:12px; } }
+    @media (prefers-reduced-motion:reduce) { *,*::before,*::after { scroll-behavior:auto!important; } }
+  </style>
+</head>
+<body>
+  <main id="reading" class="reading" aria-label="Bibeltext"><div id="text"></div></main>
+  <footer class="bottom-bar" aria-label="Leseposition und Navigation">
+    <button class="position-button" id="positionButton" type="button" aria-haspopup="dialog" aria-controls="jumpDialog">
+      <span id="currentPosition">Genesis 1,1</span>
+      <svg class="caret" viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="m7 14 5-5 5 5"/></svg>
+    </button>
+  </footer>
+  <div id="jumpDialog" class="scrim" hidden>
+    <section class="sheet" role="dialog" aria-modal="true" aria-labelledby="stepTitle">
+      <div class="sheet-header">
+        <button class="back" id="back" type="button" aria-label="Zurück" hidden>
+          <svg class="header-icon" viewBox="0 0 24 24"><path d="m15 18-6-6 6-6"/></svg>
+        </button>
+        <div class="step-title" id="stepTitle">Buch auswählen</div>
+        <button class="close" id="close" type="button" aria-label="Schliessen">
+          <svg class="header-icon" viewBox="0 0 24 24"><path d="M18 6 6 18M6 6l12 12"/></svg>
+        </button>
+      </div>
+      <div id="context" class="context" hidden></div>
+      <div id="searchWrap" class="search-wrap">
+        <input id="search" class="search" type="search" placeholder="Buch suchen" autocomplete="off" spellcheck="false" aria-label="Bibelbuch suchen">
+      </div>
+      <div id="choices" class="choices"></div>
+    </section>
+  </div>
+  <script>
+  'use strict';
+  // All data and application code are embedded: this file works fully offline.
+  // Replace demoText(...) later with the actual verse text for each reference.
+  const BOOKS = [{"name":"Genesis","chapters":[31,25,24,26,32,22,24,22,29,32,32,20,18,24,21,16,27,33,38,18,34,24,20,67,34,35,46,22,35,43,55,32,20,31,29,43,36,30,23,23,57,38,34,34,28,34,31,22,33,26]},{"name":"Exodus","chapters":[22,25,22,31,23,30,25,32,35,29,10,51,22,31,27,36,16,27,25,26,36,31,33,18,40,37,21,43,46,38,18,35,23,35,35,38,29,31,43,38]},{"name":"Levitikus","chapters":[17,16,17,35,19,30,38,36,24,20,47,8,59,57,33,34,16,30,37,27,24,33,44,23,55,46,34]},{"name":"Numeri","chapters":[54,34,51,49,31,27,89,26,23,36,35,16,33,45,41,50,13,32,22,29,35,41,30,25,18,65,23,31,40,16,54,42,56,29,34,13]},{"name":"Deuteronomium","chapters":[46,37,29,49,33,25,26,20,29,22,32,32,18,29,23,22,20,22,21,20,23,30,25,22,19,19,26,68,29,20,30,52,29,12]},{"name":"Josua","chapters":[18,24,17,24,15,27,26,35,27,43,23,24,33,15,63,10,18,28,51,9,45,34,16,33]},{"name":"Richter","chapters":[36,23,31,24,31,40,25,35,57,18,40,15,25,20,20,31,13,31,30,48,25]},{"name":"Rut","chapters":[22,23,18,22]},{"name":"1. Samuel","chapters":[28,36,21,22,12,21,17,22,27,27,15,25,23,52,35,23,58,30,24,42,15,23,29,22,44,25,12,25,11,31,13]},{"name":"2. Samuel","chapters":[27,32,39,12,25,23,29,18,13,19,27,31,39,33,37,23,29,33,43,26,22,51,39,25]},{"name":"1. Könige","chapters":[53,46,28,34,18,38,51,66,28,29,43,33,34,31,34,34,24,46,21,43,29,53]},{"name":"2. Könige","chapters":[18,25,27,44,27,33,20,29,37,36,21,21,25,29,38,20,41,37,37,21,26,20,37,20,30]},{"name":"1. Chronik","chapters":[54,55,24,43,26,81,40,40,44,14,47,40,14,17,29,43,27,17,19,8,30,19,32,31,31,32,34,21,30]},{"name":"2. Chronik","chapters":[17,18,17,22,14,42,22,18,31,19,23,16,22,15,19,14,19,34,11,37,20,12,21,27,28,23,9,27,36,27,21,33,25,33,27,23]},{"name":"Esra","chapters":[11,70,13,24,17,22,28,36,15,44]},{"name":"Nehemia","chapters":[11,20,32,23,19,19,73,18,38,39,36,47,31]},{"name":"Ester","chapters":[22,23,15,17,14,14,10,17,32,3]},{"name":"Hiob","chapters":[22,13,26,21,27,30,21,22,35,22,20,25,28,22,35,22,16,21,29,29,34,30,17,25,6,14,23,28,25,31,40,22,33,37,16,33,24,41,30,24,34,17]},{"name":"Psalmen","chapters":[6,12,8,8,12,10,17,9,20,18,7,8,6,7,5,11,15,50,14,9,13,31,6,10,22,12,14,9,11,12,24,11,22,22,28,12,40,22,13,17,13,11,5,26,17,11,9,14,20,23,19,9,6,7,23,13,11,11,17,12,8,12,11,10,13,20,7,35,36,5,24,20,28,23,10,12,20,72,13,19,16,8,18,12,13,17,7,18,52,17,16,15,5,23,11,13,12,9,9,5,8,28,22,35,45,48,43,13,31,7,10,10,9,8,18,19,2,29,176,7,8,9,4,8,5,6,5,6,8,8,3,18,3,3,21,26,9,8,24,13,10,7,12,15,21,10,20,14,9,6]},{"name":"Sprüche","chapters":[33,22,35,27,23,35,27,36,18,32,31,28,25,35,33,33,28,24,29,30,31,29,35,34,28,28,27,28,27,33,31]},{"name":"Prediger","chapters":[18,26,22,16,20,12,29,17,18,20,10,14]},{"name":"Hohelied","chapters":[17,17,11,16,16,13,13,14]},{"name":"Jesaja","chapters":[31,22,26,6,30,13,25,22,21,34,16,6,22,32,9,14,14,7,25,6,17,25,18,23,12,21,13,29,24,33,9,20,24,17,10,22,38,22,8,31,29,25,28,28,25,13,15,22,26,11,23,15,12,17,13,12,21,14,21,22,11,12,19,12,25,24]},{"name":"Jeremia","chapters":[19,37,25,31,31,30,34,22,26,25,23,17,27,22,21,21,27,23,15,18,14,30,40,10,38,24,22,17,32,24,40,44,26,22,19,32,21,28,18,16,18,22,13,30,5,28,7,47,39,46,64,34]},{"name":"Klagelieder","chapters":[22,22,66,22,22]},{"name":"Hesekiel","chapters":[28,10,27,17,17,14,27,18,11,22,25,28,23,23,8,63,24,32,14,49,32,31,49,27,17,21,36,26,21,26,18,32,33,31,15,38,28,23,29,49,26,20,27,31,25,24,23,35]},{"name":"Daniel","chapters":[21,49,30,37,31,28,28,27,27,21,45,13]},{"name":"Hosea","chapters":[11,23,5,19,15,11,16,14,17,15,12,14,16,9]},{"name":"Joel","chapters":[20,32,21]},{"name":"Amos","chapters":[15,16,15,13,27,14,17,14,15]},{"name":"Obadja","chapters":[21]},{"name":"Jona","chapters":[17,10,10,11]},{"name":"Micha","chapters":[16,13,12,13,15,16,20]},{"name":"Nahum","chapters":[15,13,19]},{"name":"Habakuk","chapters":[17,20,19]},{"name":"Zefanja","chapters":[18,15,20]},{"name":"Haggai","chapters":[15,23]},{"name":"Sacharja","chapters":[21,13,10,14,11,15,14,23,17,12,17,14,9,21]},{"name":"Maleachi","chapters":[14,17,18,6]},{"name":"Matthäus","chapters":[25,23,17,25,48,34,29,34,38,42,30,50,58,36,39,28,27,35,30,34,46,46,39,51,46,75,66,20]},{"name":"Markus","chapters":[45,28,35,41,43,56,37,38,50,52,33,44,37,72,47,20]},{"name":"Lukas","chapters":[80,52,38,44,39,49,50,56,62,42,54,59,35,35,32,31,37,43,48,47,38,71,56,53]},{"name":"Johannes","chapters":[51,25,36,54,47,71,53,59,41,42,57,50,38,31,27,33,26,40,42,31,25]},{"name":"Apostelgeschichte","chapters":[26,47,26,37,42,15,60,40,43,48,30,25,52,28,41,40,34,28,41,38,40,30,35,27,27,32,44,31]},{"name":"Römer","chapters":[32,29,31,25,21,23,25,39,33,21,36,21,14,23,33,27]},{"name":"1. Korinther","chapters":[31,16,23,21,13,20,40,13,27,33,34,31,13,40,58,24]},{"name":"2. Korinther","chapters":[24,17,18,18,21,18,16,24,15,18,33,21,14]},{"name":"Galater","chapters":[24,21,29,31,26,18]},{"name":"Epheser","chapters":[23,22,21,32,33,24]},{"name":"Philipper","chapters":[30,30,21,23]},{"name":"Kolosser","chapters":[29,23,25,18]},{"name":"1. Thessalonicher","chapters":[10,20,13,18,28]},{"name":"2. Thessalonicher","chapters":[12,17,18]},{"name":"1. Timotheus","chapters":[20,15,16,16,25,21]},{"name":"2. Timotheus","chapters":[18,26,17,22]},{"name":"Titus","chapters":[16,15,15]},{"name":"Philemon","chapters":[25]},{"name":"Hebräer","chapters":[14,18,19,16,14,20,28,13,28,39,40,29,25]},{"name":"Jakobus","chapters":[27,26,18,17,20]},{"name":"1. Petrus","chapters":[25,25,22,19,14]},{"name":"2. Petrus","chapters":[21,22,18]},{"name":"1. Johannes","chapters":[10,29,24,21,21]},{"name":"2. Johannes","chapters":[13]},{"name":"3. Johannes","chapters":[14]},{"name":"Judas","chapters":[25]},{"name":"Offenbarung","chapters":[20,29,22,11,14,17,17,13,21,11,19,17,18,20,8,21,18,24,21,15,27,21]}];
+  const STORAGE_KEY = 'bibelleser-leseposition-v1';
+  const textContainer = document.getElementById('text');
+  const currentPosition = document.getElementById('currentPosition');
+  const positionButton = document.getElementById('positionButton');
+  const dialog = document.getElementById('jumpDialog');
+  const backButton = document.getElementById('back');
+  const closeButton = document.getElementById('close');
+  const stepTitle = document.getElementById('stepTitle');
+  const context = document.getElementById('context');
+  const choices = document.getElementById('choices');
+  const searchWrap = document.getElementById('searchWrap');
+  const search = document.getElementById('search');
+
+  // Each text span represents one real verse position, even in the demo.
+  const refs = [];
+  const byBook = [];
+  const chunks = [];
+  function demoText(book, chapter, verse) {
+    const reference = `${book} ${chapter},${verse}`;
+    return (reference + ' ').repeat(10);
+  }
+  BOOKS.forEach((book, b) => {
+    const chapters = [];
+    book.chapters.forEach((count, c) => {
+      const verses = [];
+      for (let v = 1; v <= count; v++) {
+        const id = refs.length;
+        refs.push([b, c + 1, v]);
+        verses.push(id);
+        chunks.push(`<span class="verse">${demoText(book.name, c + 1, v)}</span> `);
+      }
+      chapters.push(verses);
+    });
+    byBook.push(chapters);
+  });
+  textContainer.innerHTML = chunks.join('');
+  const elements = Array.from(textContainer.children);
+  chunks.length = 0;
+
+  function formatRef(id) {
+    const [b, c, v] = refs[id];
+    return `${BOOKS[b].name} ${c},${v}`;
+  }
+
+  let activeIndex = 0;
+  let arrivalElement = null;
+  let scrollFrame = 0;
+  let saveTimer = 0;
+  let stage = 'book';
+  let selectedBook = 0;
+  let selectedChapter = 0;
+
+  function remember() {
+    try { localStorage.setItem(STORAGE_KEY, String(activeIndex)); }
+    catch (_) { /* Reading still works when browser storage is restricted. */ }
+  }
+  function saveSoon() {
+    clearTimeout(saveTimer);
+    saveTimer = setTimeout(remember, 130);
+  }
+  function getTopVerse() {
+    // Find the first verse whose text is still visible at the upper edge.
+    // Binary search avoids checking all 31,102 spans on every scroll.
+    let lo = 0;
+    let hi = elements.length - 1;
+    const topEdge = 13;
+    while (lo < hi) {
+      const mid = (lo + hi) >> 1;
+      if (elements[mid].getBoundingClientRect().bottom > topEdge) hi = mid;
+      else lo = mid + 1;
+    }
+    return lo;
+  }
+  function updatePosition() {
+    scrollFrame = 0;
+    if (!dialog.hidden) return;
+    const next = getTopVerse();
+    if (next !== activeIndex) {
+      activeIndex = next;
+      currentPosition.textContent = formatRef(activeIndex);
+      saveSoon();
+    }
+  }
+  function onScroll() {
+    if (!scrollFrame) scrollFrame = requestAnimationFrame(updatePosition);
+  }
+  function scrollToVerse(id) {
+    // A very small line break is inserted only at the arrival position,
+    // allowing its entire verse to start at the top without an earlier verse.
+    if (arrivalElement) arrivalElement.classList.remove('arrival');
+    arrivalElement = elements[id];
+    arrivalElement.classList.add('arrival');
+    // Work on a fresh layout to make large jumps accurate, even on phones.
+    const y = window.scrollY + arrivalElement.getBoundingClientRect().top - 13;
+    window.scrollTo({ top: Math.max(0,y), behavior:'instant' });
+    activeIndex = id;
+    currentPosition.textContent = formatRef(id);
+    remember();
+    requestAnimationFrame(updatePosition);
+  }
+
+  function openPicker() {
+    stage = 'book';
+    search.value = '';
+    dialog.hidden = false;
+    document.body.classList.add('dialog-open');
+    renderPicker();
+    closeButton.focus({preventScroll:true});
+  }
+  function closePicker() {
+    dialog.hidden = true;
+    document.body.classList.remove('dialog-open');
+    positionButton.focus({preventScroll:true});
+  }
+  function setStage(next) { stage = next; renderPicker(); }
+
+  function makeButton(label, className, handler) {
+    const button = document.createElement('button');
+    button.type = 'button';
+    button.className = className;
+    button.textContent = label;
+    button.addEventListener('click', handler);
+    return button;
+  }
+  function renderBooks() {
+    const query = search.value.trim().toLocaleLowerCase('de');
+    const normalize = value => value.toLocaleLowerCase('de').normalize('NFD').replace(/[\u0300-\u036f]/g,'');
+    const matching = BOOKS.map((book,i) => ({book,i})).filter(item =>
+      normalize(item.book.name).includes(normalize(query)) ||
+      // Accept common alternative names of the Pentateuch.
+      (item.i < 5 && (`${item.i+1}. mose`).includes(normalize(query)) && query !== '')
+    );
+    choices.replaceChildren();
+    if (!matching.length) {
+      const empty = document.createElement('div'); empty.className='no-results';
+      empty.textContent = 'Kein Buch gefunden.'; choices.appendChild(empty); return;
+    }
+    let previousGroup = '';
+    matching.forEach(({book,i}) => {
+      const group = i < 39 ? 'Altes Testament' : 'Neues Testament';
+      if (group !== previousGroup) {
+        const header = document.createElement('div');
+        header.className='group-label'; header.textContent=group;
+        choices.appendChild(header); previousGroup=group;
+      }
+      const btn = makeButton(book.name, 'pick', () => {
+        selectedBook=i;
+        setStage('chapter');
+      });
+      const arrow = document.createElement('span');
+      arrow.className='arrow'; arrow.textContent='›'; arrow.setAttribute('aria-hidden','true');
+      btn.appendChild(arrow);
+      choices.appendChild(btn);
+    });
+  }
+  function renderPicker() {
+    backButton.hidden = stage === 'book';
+    searchWrap.hidden = stage !== 'book';
+    context.hidden = stage === 'book';
+    choices.scrollTop = 0;
+    if (stage === 'book') {
+      stepTitle.textContent='Buch auswählen';
+      renderBooks();
+      return;
+    }
+    choices.replaceChildren();
+    const grid = document.createElement('div');
+    grid.className='numbers';
+    if (stage === 'chapter') {
+      stepTitle.textContent='Kapitel auswählen';
+      context.textContent=BOOKS[selectedBook].name;
+      BOOKS[selectedBook].chapters.forEach((_,i) => {
+        grid.appendChild(makeButton(String(i+1),'number', () => {
+          selectedChapter = i;
+          setStage('verse');
+        }));
+      });
+    } else {
+      stepTitle.textContent='Vers auswählen';
+      context.textContent=`${BOOKS[selectedBook].name} ${selectedChapter + 1}`;
+      const verseIds = byBook[selectedBook][selectedChapter];
+      verseIds.forEach((id,i) => {
+        grid.appendChild(makeButton(String(i+1),'number', () => {
+          closePicker();
+          scrollToVerse(id);
+        }));
+      });
+    }
+    choices.appendChild(grid);
+  }
+
+  positionButton.addEventListener('click', openPicker);
+  closeButton.addEventListener('click', closePicker);
+  backButton.addEventListener('click', () => {
+    if (stage === 'verse') setStage('chapter');
+    else if (stage === 'chapter') setStage('book');
+  });
+  search.addEventListener('input', renderBooks);
+  dialog.addEventListener('click', event => {
+    if (event.target === dialog) closePicker();
+  });
+  document.addEventListener('keydown', event => {
+    if (dialog.hidden) return;
+    if (event.key === 'Escape') { event.preventDefault(); closePicker(); }
+    // Keep keyboard focus inside the dialog.
+    if (event.key === 'Tab') {
+      const focusable = Array.from(dialog.querySelectorAll('button:not([hidden]),input:not([hidden])'))
+        .filter(el => el.offsetParent !== null);
+      const first = focusable[0], last = focusable[focusable.length-1];
+      if (event.shiftKey && document.activeElement === first) { event.preventDefault(); last.focus(); }
+      else if (!event.shiftKey && document.activeElement === last) { event.preventDefault(); first.focus(); }
+    }
+  });
+  window.addEventListener('scroll', onScroll, {passive:true});
+  window.addEventListener('resize', onScroll, {passive:true});
+  window.addEventListener('pagehide', remember);
+  document.addEventListener('visibilitychange', () => { if(document.hidden) remember(); });
+
+  if ('scrollRestoration' in history) history.scrollRestoration='manual';
+  let saved = 0;
+  try { saved = Number(localStorage.getItem(STORAGE_KEY) || 0); } catch (_) {}
+  const initialIndex = Number.isInteger(saved) && saved >= 0 && saved < refs.length ? saved : 0;
+  // Delay restoration until after the first layout; the reference is stored,
+  // never an obsolete pixel offset from a previous screen size.
+  requestAnimationFrame(() => scrollToVerse(initialIndex));
+  </script>
+</body>
+</html>
